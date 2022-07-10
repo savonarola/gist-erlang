@@ -8,10 +8,17 @@
     consistent/2,
     union/1,
     penalty/2,
-    pick_split/2
+    pick_split/2,
+    display/1
+]).
+
+-export([
+    to_key/1
 ]).
 
 -export_type([key/0]).
+
+-define(MAX_DISPLAY, 100).
 
 -type key() :: #{term() => 1}.
 
@@ -44,6 +51,30 @@ pick_split(Keys, Min) when length(Keys) >= Min * 2, Min > 0 ->
     [Seed1, Seed2] = peek_seeds(Keys, Keys, undefined, undefined),
     RestKeys = Keys -- [Seed1, Seed2],
     distribute_keys(Seed1, Seed2, [Seed1], [Seed2], 1, 1, RestKeys, length(RestKeys), Min).
+
+-spec display(key()) -> iolist().
+%% For debug only
+display(Key) ->
+    IO = string:join(
+        lists:map(
+            fun(V) ->
+                io_lib:format("~p", [V])
+            end,
+            maps:keys(Key)
+        ),
+        ","
+    ),
+    S = binary_to_list(iolist_to_binary(IO)),
+    case string:length(S) > ?MAX_DISPLAY of
+        true ->
+            string:sub_string(S, 1, ?MAX_DISPLAY - 3) ++ "...";
+        false ->
+            S
+    end.
+
+-spec to_key(list()) -> key().
+to_key(List) ->
+    maps:from_list([{El, 1} || El <- List]).
 
 distribute_keys(_Union1, _Union2, Keys1, Keys2, _Cnt1, _Cnt2, [], _CntLeft, _CntMin) ->
     {Keys1, Keys2};
@@ -91,7 +122,7 @@ distribute_keys(Union1, Union2, Keys1, Keys2, Cnt1, Cnt2, [Key | Rest] = Keys, C
 
 peek_seeds([], [], _Score, Seeds) ->
     Seeds;
-peek_seeds([Key1 | Rest1], [], Score, Seeds) ->
+peek_seeds([_Key1 | Rest1], [], Score, Seeds) ->
     peek_seeds(Rest1, Rest1, Score, Seeds);
 peek_seeds([Key1 | Rest1], [Key2 | Rest2], Score, Seeds) ->
     case are_better_seeds(Key1, Key2, Score) of
