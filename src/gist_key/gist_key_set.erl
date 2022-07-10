@@ -30,7 +30,12 @@ decompress(Key) -> Key.
 
 -spec consistent(key(), key()) -> boolean().
 consistent(Key, QueryKey) ->
-    maps:merge(Key, QueryKey) =:= Key.
+    lists:all(
+        fun(QKK) ->
+            maps:is_key(QKK, Key)
+        end,
+        maps:keys(QueryKey)
+    ).
 
 -spec union([key()]) -> key().
 union(Keys) ->
@@ -44,7 +49,7 @@ union(Keys) ->
 
 -spec penalty(key(), key()) -> number().
 penalty(Key, KeyToAdd) ->
-    maps:size(maps:merge(Key, KeyToAdd)) - maps:size(Key).
+    length([KTAKey || KTAKey <- maps:keys(KeyToAdd), not maps:is_key(KTAKey, Key)]).
 
 -spec pick_split([key()], pos_integer()) -> {[key()], [key()]}.
 pick_split(Keys, Min) when length(Keys) >= Min * 2, Min > 0 ->

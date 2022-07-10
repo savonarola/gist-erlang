@@ -5,7 +5,8 @@
     destroy/1,
     insert/3,
     search/2,
-    display/1
+    display/1,
+    depth/1
 ]).
 
 -export_type([gist_tree/0]).
@@ -35,6 +36,9 @@
 %% API
 %%----------------------------------------------------------------------------------------------------------------
 
+-spec depth(gist_tree()) -> non_neg_integer().
+depth(#tree{root_level = L}) -> L.
+
 -spec new(atom(), module()) -> gist_tree().
 new(Name, KeyMod) ->
     #tree{
@@ -63,7 +67,7 @@ insert(#tree{root = undefined} = Tree, Key, Value) ->
     Tree#tree{root = NodeId, root_level = 0};
 %% Special case #2: tree with a single node
 insert(
-    #tree{tree_tab = TTab, root = RootId, root_level = 0} = Tree, NewKey, Value
+    #tree{root = RootId, root_level = 0} = Tree, NewKey, Value
 ) ->
     % ct:print("Single-node tree"),
     #node{level = 0, children = [{Key, ValuesId}]} = get_node(Tree, RootId),
@@ -111,6 +115,19 @@ insert(#tree{root = RootId, root_level = L} = Tree, NewKey, Value) ->
             true = put_node(Tree, NewRootId, NewRootNode),
             Tree#tree{root_level = L + 1, root = NewRootId}
     end.
+
+search(#tree{root = RootId} = Tree, SearchedKey) ->
+    search_node(Tree, get_node(Tree, RootId), SearchedKey).
+
+display(#tree{root = undefined}) ->
+    "[empty]\n";
+display(#tree{root = RootId, root_level = RootLevel} = Tree) ->
+    Node = get_node(Tree, RootId),
+    display_node(Tree, Node, RootLevel).
+
+%%----------------------------------------------------------------------------------------------------------------
+%% Internal helpers
+%%----------------------------------------------------------------------------------------------------------------
 
 %% We are at level 0 (leaf nodes), try to insert key
 insert(Tree, #node{level = 0, children = Children} = Node, NewKey, Value) ->
@@ -175,18 +192,6 @@ insert(Tree, #node{level = L, children = Children} = Node, NewKey, Value) when
             end
     end.
 
-search(#tree{root = RootId} = Tree, SearchedKey) ->
-    search_node(Tree, get_node(Tree, RootId), SearchedKey).
-
-display(#tree{root = undefined}) ->
-    "[empty]\n";
-display(#tree{root = RootId, root_level = RootLevel} = Tree) ->
-    Node = get_node(Tree, RootId),
-    display_node(Tree, Node, RootLevel).
-
-%%----------------------------------------------------------------------------------------------------------------
-%% Internal helpers
-%%----------------------------------------------------------------------------------------------------------------
 display_node(Tree, #node{level = 0, children = Children}, RootLevel) ->
     lists:map(
         fun({Key, ValuesId}) ->
