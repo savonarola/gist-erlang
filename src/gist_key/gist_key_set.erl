@@ -2,6 +2,9 @@
 
 -behaviour(gist_key).
 
+-compile(export_all).
+-compile(nowarn_export_all).
+
 -export([
     compress/1,
     decompress/1,
@@ -21,6 +24,10 @@
 -define(MAX_DISPLAY, 100).
 
 -type key() :: #{term() => 1}.
+
+%%----------------------------------------------------------------------------------------------------------------
+%% gist_key behaviour
+%%----------------------------------------------------------------------------------------------------------------
 
 -spec compress(key()) -> term().
 compress(Key) -> Key.
@@ -53,7 +60,7 @@ penalty(Key, KeyToAdd) ->
 
 -spec pick_split([key()], pos_integer()) -> {[key()], [key()]}.
 pick_split(Keys, Min) when length(Keys) >= Min * 2, Min > 0 ->
-    [Seed1, Seed2] = peek_seeds(Keys, Keys, undefined, undefined),
+    [Seed1, Seed2] = peek_seeds(Keys),
     RestKeys = Keys -- [Seed1, Seed2],
     distribute_keys(Seed1, Seed2, [Seed1], [Seed2], 1, 1, RestKeys, length(RestKeys), Min).
 
@@ -65,7 +72,7 @@ display(Key) ->
             fun(V) ->
                 io_lib:format("~p", [V])
             end,
-            maps:keys(Key)
+            lists:sort(maps:keys(Key))
         ),
         ","
     ),
@@ -77,9 +84,17 @@ display(Key) ->
             S
     end.
 
+%%----------------------------------------------------------------------------------------------------------------
+%% API
+%%----------------------------------------------------------------------------------------------------------------
+
 -spec to_key(list()) -> key().
 to_key(List) ->
     maps:from_list([{El, 1} || El <- List]).
+
+%%----------------------------------------------------------------------------------------------------------------
+%% Internal helpers
+%%----------------------------------------------------------------------------------------------------------------
 
 distribute_keys(_Union1, _Union2, Keys1, Keys2, _Cnt1, _Cnt2, [], _CntLeft, _CntMin) ->
     {Keys1, Keys2};
@@ -125,10 +140,13 @@ distribute_keys(Union1, Union2, Keys1, Keys2, Cnt1, Cnt2, [Key | Rest] = Keys, C
             end
     end.
 
-peek_seeds([], [], _Score, Seeds) ->
+peek_seeds(Keys) when length(Keys) > 1 ->
+    peek_seeds(Keys, tl(Keys), undefined, undefined).
+
+peek_seeds([_], [], _Score, Seeds) ->
     Seeds;
 peek_seeds([_Key1 | Rest1], [], Score, Seeds) ->
-    peek_seeds(Rest1, Rest1, Score, Seeds);
+    peek_seeds(Rest1, tl(Rest1), Score, Seeds);
 peek_seeds([Key1 | Rest1], [Key2 | Rest2], Score, Seeds) ->
     case are_better_seeds(Key1, Key2, Score) of
         {true, NewScore} ->

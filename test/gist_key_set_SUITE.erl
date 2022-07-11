@@ -13,7 +13,8 @@ all() ->
         t_compress,
         t_decompress,
         t_penalty,
-        t_pick_split
+        t_pick_split,
+        t_pick_split_empty
     ].
 
 t_union(_Config) ->
@@ -101,6 +102,36 @@ t_pick_split(_Config) ->
         [
             [#{a => 1}, #{a => 1, b => 1}, #{a => 1, b => 1, c => 1}],
             [#{d => 1}, #{d => 1, e => 1}, #{d => 1, e => 1, f => 1}]
+        ],
+        lists:sort([lists:sort(Keys1), lists:sort(Keys2)])
+    ).
+
+t_pick_split_empty(_Config) ->
+    %% Generally we shouldn't index empty keys: #{}
+
+    {Keys1, Keys2} = gist_key_set:pick_split(
+        [
+            #{},
+            #{a => 1},
+            #{d => 1},
+            #{a => 1, b => 1},
+            #{d => 1, e => 1},
+            #{a => 1, b => 1, c => 1},
+            #{d => 1, e => 1, f => 1}
+        ],
+        2
+    ),
+
+    ?assertEqual(
+        [
+            [#{}, #{d => 1, e => 1, f => 1}],
+            [
+                #{a => 1},
+                #{d => 1},
+                #{a => 1, b => 1},
+                #{d => 1, e => 1},
+                #{a => 1, b => 1, c => 1}
+            ]
         ],
         lists:sort([lists:sort(Keys1), lists:sort(Keys2)])
     ).
