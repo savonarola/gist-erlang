@@ -8,14 +8,16 @@
 
 all() ->
     [
-        t_insert_search,
-        t_search_timings
+        % t_search_timings,
+        t_insert_search
     ].
 
 t_insert_search(_Config) ->
-    Tree0 = gist_tree:new(gist_key_set),
+    MinMaxFanouts = {2, 10},
+    Tree0 = gist_tree:new(gist_key_set, MinMaxFanouts),
 
     Words = word_list(10000),
+    N = length(Words),
 
     {Time0, Tree1} = timer:tc(fun() ->
         lists:foldl(
@@ -28,23 +30,30 @@ t_insert_search(_Config) ->
         )
     end),
 
-    ct:print("Time: ~psec", [Time0 / 1_000_000]),
+    ct:print("Insert/Key: ~pms", [Time0 / N / 1_000]),
+    true = erlang:garbage_collect(),
 
-    ct:print("Mem: ~p", [process_info(self(), memory)]),
-    % ct:print("~s", [gist_tree:display(Tree1)]),
+    {memory, Mem} = process_info(self(), memory),
+    ct:print("Mem: ~p, Mem/Key: ~p", [Mem, Mem / N]),
+    ct:print("Tree depth for ~p keys(fanouts: ~p): ~p", [N, MinMaxFanouts, gist_tree:depth(Tree1)]),
 
-    SearchKey = gist_key_set:to_key(['and', 'nda']),
+    SearchKey0 = gist_key_set:to_key(['pre', 'lly']),
 
     ?assertEqual(
-        [
-            <<"Mandan">>,
-            <<"bandarlog">>,
-            <<"demandable">>,
-            <<"garlandage">>,
-            <<"husbandage">>
-        ],
-        lists:sort(gist_tree:search(Tree1, SearchKey))
-    ).
+        [<<"impressionally">>, <<"prejudicially">>],
+        lists:sort(gist_tree:search(Tree1, SearchKey0))
+    ),
+
+    SearchKey1 = gist_key_set:to_key(['aaa', 'bbb']),
+
+    ?assertEqual(
+        [],
+        gist_tree:search(Tree1, SearchKey1)
+    ),
+
+    AllValues = gist_tree:search(Tree1, #{}),
+
+    ?assertEqual(lists:sort(Words), lists:sort(AllValues)).
 
 t_search_timings(_Config) ->
     MinMaxFanouts = {2, 10},

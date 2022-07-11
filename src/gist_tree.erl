@@ -21,7 +21,7 @@
 
 -record(tree, {
     root_level = 0 :: non_neg_integer(),
-    min = 5 :: pos_integer(),
+    min = 2 :: pos_integer(),
     max = 20 :: pos_integer(),
     root = undefined :: reference() | undefined,
     mod :: module()
@@ -30,7 +30,7 @@
 -type gist_tree() :: #tree{}.
 
 -define(DISPLAY_PAD, "  ").
--define(DEFAULT_MIN_MAX_FANOUT, {5, 20}).
+-define(DEFAULT_MIN_MAX_FANOUT, {2, 20}).
 
 %%----------------------------------------------------------------------------------------------------------------
 %% API
