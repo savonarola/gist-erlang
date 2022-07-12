@@ -8,8 +8,7 @@
 
 all() ->
     [
-        t_search_timings
-        % t_insert_search
+        t_insert_search
     ].
 
 t_insert_search(_Config) ->
@@ -33,8 +32,9 @@ t_insert_search(_Config) ->
     ct:print("Insert/Key: ~pms", [Time0 / N / 1_000]),
     true = erlang:garbage_collect(),
 
-    {memory, Mem} = process_info(self(), memory),
-    ct:print("Mem: ~p, Mem/Key: ~p", [Mem, Mem / N]),
+    Mem = erts_debug:size(Tree1),
+    MemFlat = erts_debug:flat_size(Tree1),
+    ct:print("Mem: ~p, MemFlat: ~p, Mem/Key: ~p", [Mem, MemFlat, MemFlat / N]),
     ct:print("Tree depth for ~p keys(fanouts: ~p): ~p", [N, MinMaxFanouts, gist_tree:depth(Tree1)]),
 
     SearchKey0 = gist_key_set:to_key(['pre', 'lly']),
@@ -51,7 +51,7 @@ t_insert_search(_Config) ->
         gist_tree:search(Tree1, SearchKey1)
     ),
 
-    AllValues = gist_tree:search(Tree1, #{}),
+    AllValues = gist_tree:search(Tree1, gist_key_set:null_key()),
 
     ?assertEqual(lists:sort(Words), lists:sort(AllValues)).
 

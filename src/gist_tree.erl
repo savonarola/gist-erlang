@@ -16,16 +16,11 @@
 
 -type key() :: term().
 
--record(node, {
-    level = 0 :: non_neg_integer() | undefined,
-    children = [] :: [{key(), reference()}]
-}).
-
 -record(tree, {
     root_level = 0 :: non_neg_integer(),
     min = 2 :: pos_integer(),
     max = 20 :: pos_integer(),
-    root = undefined :: reference() | undefined,
+    root = undefined :: [] | undefined,
     mod :: module()
 }).
 
@@ -64,121 +59,109 @@ depth(#tree{root_level = L}) -> L.
 
 %% Special case #1: empty tree
 insert(#tree{root = undefined} = Tree, Key, Value) ->
-    % ct:print("Empty tree"),
     Values = add_value(Tree, undefined, Value),
 
-    Node = #node{level = 0, children = [{Key, Values}]},
+    Node = [{Key, Values}],
     Tree#tree{root = Node, root_level = 0};
 %% Special case #2: tree with a single node
 insert(
     #tree{root = Node, root_level = 0} = Tree, NewKey, Value
 ) ->
-    % ct:print("Single-node tree"),
-    #node{level = 0, children = [{Key, Values}]} = Node,
+    [{Key, Values}] = Node,
     case NewKey of
         Key ->
             NewValues = add_value(Tree, Values, Value),
-            NewNode = Node#node{children = [{Key, NewValues}]},
+            NewNode = [{Key, NewValues}],
             Tree#tree{root = NewNode};
         _ ->
             %% We have two different keys,
             %% so we construct a real tree with the root and two child nodes
             NewValues = add_value(Tree, undefined, Value),
-            NewNode = #node{level = 0, children = [{NewKey, NewValues}]},
-
-            NewRootNode = #node{
-                level = 1,
-                children = [{Key, Node}, {NewKey, NewNode}]
-            },
+            NewNode = [{NewKey, NewValues}],
+            NewRootNode = [{Key, Node}, {NewKey, NewNode}],
             Tree#tree{root = NewRootNode, root_level = 1}
     end;
 %% Common case, we have a tree with a root and at least two child nodes
 insert(#tree{root = Node, root_level = L} = Tree, NewKey, Value) ->
-    % ct:print("General tree"),
-    case insert(Tree, Node, NewKey, Value) of
+    case insert(Tree, L, Node, NewKey, Value) of
         {ok, NewNode} ->
             Tree#tree{root = NewNode};
         {ok, _NewKey, NewNode} ->
             Tree#tree{root = NewNode};
         %% Need to build a new root
         {ok, NewKey1, NewNode1, NewKey2, NewNode2} ->
-            NewRootChildren = [{NewKey1, NewNode1}, {NewKey2, NewNode2}],
-            NewRootNode = #node{level = L + 1, children = NewRootChildren},
+            NewRootNode = [{NewKey1, NewNode1}, {NewKey2, NewNode2}],
             Tree#tree{root_level = L + 1, root = NewRootNode}
     end.
 
-search(#tree{root = Node} = Tree, SearchedKey) ->
-    search_node(Tree, Node, SearchedKey).
+search(#tree{root = Node, root_level = L} = Tree, SearchedKey) ->
+    search_node(Tree, L, Node, SearchedKey).
 
 display(#tree{root = undefined}) ->
     "[empty]\n";
-display(#tree{root = Node, root_level = RootLevel} = Tree) ->
-    display_node(Tree, Node, RootLevel).
+display(#tree{root = Node, root_level = Level} = Tree) ->
+    display_node(Tree, Level, Node).
 
 %%----------------------------------------------------------------------------------------------------------------
 %% Internal helpers
 %%----------------------------------------------------------------------------------------------------------------
 
 %% We are at level 0 (leaf nodes), try to insert key
-insert(Tree, #node{level = 0, children = Children} = Node, NewKey, Value) ->
-    case lists:keytake(NewKey, 1, Children) of
+insert(Tree, 0, Node, NewKey, Value) ->
+    case lists:keytake(NewKey, 1, Node) of
         %% The easiest case, the key exists, we just add value
         {value, {NewKey, Values}, RestChildren} ->
             NewValues = add_value(Tree, Values, Value),
-            NewChildren = [{NewKey, NewValues} | RestChildren],
-            {ok, Node#node{children = NewChildren}};
+            NewNode = [{NewKey, NewValues} | RestChildren],
+            {ok, NewNode};
         %% New key
         false ->
             Values = add_value(Tree, undefined, Value),
-            NewChildren = [{NewKey, Values} | Children],
-            case length(NewChildren) =< Tree#tree.max of
+            NewNode = [{NewKey, Values} | Node],
+            case length(NewNode) =< Tree#tree.max of
                 %% The node has space for a new key
                 true ->
-                    {ok, search_key(Tree, NewChildren), Node#node{children = NewChildren}};
+                    {ok, search_key(Tree, NewNode), NewNode};
                 %% The node does not have space for a new key, need split
                 false ->
-                    {{SKey1, Children1}, {SKey2, Children2}} = split(Tree, NewChildren),
-                    {ok, SKey1, #node{level = 0, children = Children1}, SKey2, #node{
-                        level = 0, children = Children2
-                    }}
+                    {{SKey1, Children1}, {SKey2, Children2}} = split(Tree, NewNode),
+                    {ok, SKey1, Children1, SKey2, Children2}
             end
     end;
 %% We are at level > 0 (tree nodes), need find the best child
 %% children = [] should be considered when we implement delete
-insert(Tree, #node{level = L, children = Children} = Node, NewKey, Value) when
-    L > 0, Children =/= []
+insert(Tree, L, Node, NewKey, Value) when
+    L > 0, Node =/= []
 ->
-    BestKey = best_insert_key(Tree, Children, NewKey),
-    {value, {BestKey, BestNode}, RestChildren} = lists:keytake(BestKey, 1, Children),
-    case insert(Tree, BestNode, NewKey, Value) of
+    BestKey = best_insert_key(Tree, Node, NewKey),
+    {value, {BestKey, BestNode}, RestChildren} = lists:keytake(BestKey, 1, Node),
+    case insert(Tree, L - 1, BestNode, NewKey, Value) of
         %% value inserted into an existing key
-        {ok, NewNode} ->
-            NewChildren = [{BestKey, NewNode} | RestChildren],
-            {ok, Node#node{children = NewChildren}};
+        {ok, NewChildNode} ->
+            NewNode = [{BestKey, NewChildNode} | RestChildren],
+            {ok, NewNode};
         %% value inserted into an existing node
-        {ok, NewNodeKey, NewNode} ->
-            NewChildren = [{NewNodeKey, NewNode} | RestChildren],
+        {ok, NewNodeKey, NewChildNode} ->
+            NewNode = [{NewNodeKey, NewChildNode} | RestChildren],
             %% search_key for ADJUST_KEYS
-            {ok, search_key(Tree, NewChildren), Node#node{children = NewChildren}};
+            {ok, search_key(Tree, NewNode), NewNode};
         %% value inserted and lead to a split
-        {ok, NewKey1, NewNode1, NewKey2, NewNode2} ->
-            NewChildren = [{NewKey1, NewNode1}, {NewKey2, NewNode2} | RestChildren],
-            case length(NewChildren) =< Tree#tree.max of
+        {ok, NewKey1, NewChildNode1, NewKey2, NewChildNode2} ->
+            NewNode = [{NewKey1, NewChildNode1}, {NewKey2, NewChildNode2} | RestChildren],
+            case length(NewNode) =< Tree#tree.max of
                 %% this node has place for both split nodes
                 true ->
                     %% search_key for ADJUST_KEYS
-                    {ok, search_key(Tree, NewChildren), Node#node{children = NewChildren}};
+                    {ok, search_key(Tree, NewNode), NewNode};
                 %% the worst case, we have no place for the both new nodes
                 %% we need to split too
                 false ->
-                    {{SKey1, Children1}, {SKey2, Children2}} = split(Tree, NewChildren),
-                    {ok, SKey1, #node{level = L, children = Children1}, SKey2, #node{
-                        level = L, children = Children2
-                    }}
+                    {{SKey1, NewNode1}, {SKey2, NewNode2}} = split(Tree, NewNode),
+                    {ok, SKey1, NewNode1, SKey2, NewNode2}
             end
     end.
 
-display_node(Tree, #node{level = 0, children = Children}, RootLevel) ->
+display_node(#tree{root_level = RootLevel} = Tree, 0, Node) ->
     lists:map(
         fun({Key, Values}) ->
             [
@@ -186,36 +169,35 @@ display_node(Tree, #node{level = 0, children = Children}, RootLevel) ->
                 io_lib:format("~s~p~n", [pad(0, RootLevel + 1), get_values(Tree, Values)])
             ]
         end,
-        Children
+        Node
     );
-display_node(Tree, #node{level = L, children = Children}, RootLevel) when L > 0 ->
+display_node(#tree{root_level = RootLevel} = Tree, L, Node) when L > 0 ->
     lists:map(
-        fun({Key, Node}) ->
+        fun({Key, ChildNode}) ->
             [
                 io_lib:format("~s[~s]~n", [pad(L, RootLevel), display_key(Tree, Key)]),
-                display_node(Tree, Node, RootLevel)
+                display_node(Tree, L - 1, ChildNode)
             ]
         end,
-        Children
+        Node
     ).
 
 pad(L, RootLevel) ->
     lists:duplicate(RootLevel - L, ?DISPLAY_PAD).
 
-search_node(#tree{mod = Mod} = Tree, #node{level = 0, children = Children}, SearchedKey) ->
+search_node(#tree{mod = Mod} = Tree, 0, Node, SearchedKey) ->
     lists:concat([
         get_values(Tree, Values)
-     || {Key, Values} <- Children, Mod:consistent(Key, SearchedKey)
+     || {Key, Values} <- Node, Mod:consistent(Key, SearchedKey)
     ]);
-search_node(#tree{mod = Mod} = Tree, #node{level = L, children = Children}, SearchedKey) when
+search_node(#tree{mod = Mod} = Tree, L, Node, SearchedKey) when
     L > 0
 ->
     lists:concat([
-        search_node(Tree, Node, SearchedKey)
-     || {Key, Node} <- Children, Mod:consistent(Key, SearchedKey)
+        search_node(Tree, L - 1, ChildNode, SearchedKey)
+     || {Key, ChildNode} <- Node, Mod:consistent(Key, SearchedKey)
     ]).
 
--compile({inline, [add_value/3]}).
 add_value(_Tree, Values, Value) ->
     case Values of
         undefined ->
@@ -224,11 +206,9 @@ add_value(_Tree, Values, Value) ->
             [Value | Values]
     end.
 
--compile({inline, [get_values/2]}).
 get_values(_Tree, Values) ->
     Values.
 
--compile({inline, [split/2]}).
 split(#tree{min = Min, mod = Mod} = Tree, ChildrenList) ->
     Children = maps:from_list(ChildrenList),
     {Keys1, Keys2} = Mod:pick_split(maps:keys(Children), Min),

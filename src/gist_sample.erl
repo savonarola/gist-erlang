@@ -41,7 +41,7 @@ test_insert() ->
     fprof:analyse([no_callers, {cols, 120}, {sort, acc}]).
 
 test_timings() ->
-    MinMaxFanouts = {2, 5},
+    MinMaxFanouts = {2, 4},
     Tree0 = gist_tree:new(gist_key_set, MinMaxFanouts),
 
     Words = word_list(100000),
@@ -119,7 +119,10 @@ sample_key(Word, N) ->
 
 word_list(N) ->
     {ok, Data} = file:read_file(word_file(N)),
-    binary:split(Data, <<"\n">>, [global, trim_all]).
+    lists:map(
+        fun string:lowercase/1,
+        binary:split(Data, <<"\n">>, [global, trim_all])
+    ).
 
 word_file(N) ->
     NBin = integer_to_binary(N),
