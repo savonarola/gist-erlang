@@ -2,14 +2,14 @@
 
 -behaviour(gist_key).
 
--compile(export_all).
--compile(nowarn_export_all).
+% -compile(inline_list_funcs).
 
 -export([
     compress/1,
     decompress/1,
     consistent/2,
-    union/1,
+    union/2,
+    null_key/0,
     penalty/2,
     pick_split/2,
     display/1
@@ -44,19 +44,16 @@ consistent(Key, QueryKey) ->
         maps:keys(QueryKey)
     ).
 
--spec union([key()]) -> key().
-union(Keys) ->
-    lists:foldl(
-        fun(Key, Acc) ->
-            maps:merge(Acc, Key)
-        end,
-        #{},
-        Keys
-    ).
+-spec union(key(), key()) -> key().
+union(Key1, Key2) ->
+    maps:merge(Key1, Key2).
+
+-spec null_key() -> key().
+null_key() -> #{}.
 
 -spec penalty(key(), key()) -> number().
 penalty(Key, KeyToAdd) ->
-    length([KTAKey || KTAKey <- maps:keys(KeyToAdd), not maps:is_key(KTAKey, Key)]).
+    penalty(Key, maps:keys(KeyToAdd), 0).
 
 -spec pick_split([key()], pos_integer()) -> {[key()], [key()]}.
 pick_split(Keys, Min) when length(Keys) >= Min * 2, Min > 0 ->
@@ -96,6 +93,16 @@ to_key(List) ->
 %% Internal helpers
 %%----------------------------------------------------------------------------------------------------------------
 
+penalty(_Key, [], Score) ->
+    Score;
+penalty(Key, [KTAKey | Rest], Score) ->
+    case Key of
+        #{KTAKey := _} ->
+            penalty(Key, Rest, Score);
+        _ ->
+            penalty(Key, Rest, Score + 1)
+    end.
+
 distribute_keys(_Union1, _Union2, Keys1, Keys2, _Cnt1, _Cnt2, [], _CntLeft, _CntMin) ->
     {Keys1, Keys2};
 distribute_keys(Union1, Union2, Keys1, Keys2, Cnt1, Cnt2, [Key | Rest] = Keys, CntLeft, CntMin) ->
@@ -114,7 +121,7 @@ distribute_keys(Union1, Union2, Keys1, Keys2, Cnt1, Cnt2, [Key | Rest] = Keys, C
                 true ->
                     %% Better to add to Union1
                     distribute_keys(
-                        union([Union1, Key]),
+                        union(Union1, Key),
                         Union2,
                         [Key | Keys1],
                         Keys2,
@@ -128,7 +135,7 @@ distribute_keys(Union1, Union2, Keys1, Keys2, Cnt1, Cnt2, [Key | Rest] = Keys, C
                     %% Better to add to Union2
                     distribute_keys(
                         Union1,
-                        union([Union2, Key]),
+                        union(Union2, Key),
                         Keys1,
                         [Key | Keys2],
                         Cnt1,

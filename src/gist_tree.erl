@@ -1,5 +1,7 @@
 -module(gist_tree).
 
+% -compile(inline_list_funcs).
+
 -export([
     new/1,
     new/2,
@@ -213,31 +215,36 @@ search_node(#tree{mod = Mod} = Tree, #node{level = L, children = Children}, Sear
      || {Key, Node} <- Children, Mod:consistent(Key, SearchedKey)
     ]).
 
-add_value(_Tree, ValueSet, Value) ->
-    case ValueSet of
+-compile({inline, [add_value/3]}).
+add_value(_Tree, Values, Value) ->
+    case Values of
         undefined ->
-            ordsets:from_list([Value]);
+            [Value];
         _ ->
-            ordsets:add_element(Value, ValueSet)
+            [Value | Values]
     end.
 
-get_values(_Tree, ValueSet) ->
-    ordsets:to_list(ValueSet).
+-compile({inline, [get_values/2]}).
+get_values(_Tree, Values) ->
+    Values.
 
-split(#tree{min = Min, mod = Mod}, ChildrenList) ->
+-compile({inline, [split/2]}).
+split(#tree{min = Min, mod = Mod} = Tree, ChildrenList) ->
     Children = maps:from_list(ChildrenList),
     {Keys1, Keys2} = Mod:pick_split(maps:keys(Children), Min),
-    {{Mod:union(Keys1), maps:to_list(maps:with(Keys1, Children))}, {
-        Mod:union(Keys2), maps:to_list(maps:with(Keys2, Children))
-    }}.
+    Children1 = maps:to_list(maps:with(Keys1, Children)),
+    Children2 = maps:to_list(maps:with(Keys2, Children)),
+    {
+        {search_key(Tree, Children1), Children1},
+        {search_key(Tree, Children2), Children2}
+    }.
 
 best_insert_key(Tree, Children, NewKey) ->
-    {Keys, _} = lists:unzip(Children),
-    best_insert_key(Tree, Keys, NewKey, undefined, undefined).
+    best_insert_key(Tree, Children, NewKey, undefined, undefined).
 
 best_insert_key(_Tree, [], _NewKey, BestKey, _) ->
     BestKey;
-best_insert_key(#tree{mod = Mod} = Tree, [Key | Rest], NewKey, BestKey, BestPenalty) ->
+best_insert_key(#tree{mod = Mod} = Tree, [{Key, _} | Rest], NewKey, BestKey, BestPenalty) ->
     Penalty = Mod:penalty(Key, NewKey),
     case Penalty < BestPenalty of
         true ->
@@ -246,9 +253,13 @@ best_insert_key(#tree{mod = Mod} = Tree, [Key | Rest], NewKey, BestKey, BestPena
             best_insert_key(Tree, Rest, NewKey, BestKey, BestPenalty)
     end.
 
-search_key(#tree{mod = Mod}, Children) ->
-    {Keys, _} = lists:unzip(Children),
-    Mod:union(Keys).
+search_key(#tree{mod = Mod} = Tree, Children) ->
+    search_key(Tree, Children, Mod:null_key()).
+
+search_key(#tree{}, [], AccKey) ->
+    AccKey;
+search_key(#tree{mod = Mod} = Tree, [{Key, _} | Rest], AccKey) ->
+    search_key(Tree, Rest, Mod:union(AccKey, Key)).
 
 display_key(#tree{mod = Mod}, Key) ->
     try

@@ -21,14 +21,16 @@ t_union(_Config) ->
     ?assertEqual(
         #{a => 1, b => 1, c => 1},
         gist_key_set:union(
-            [#{a => 1}, #{b => 1}, #{c => 1}]
+            #{a => 1},
+            #{b => 1, c => 1}
         )
     ),
 
     ?assertEqual(
         #{a => 1, b => 1, c => 1},
         gist_key_set:union(
-            [#{a => 1, b => 1}, #{b => 1, c => 1}, #{c => 1, a => 1}]
+            #{a => 1, b => 1},
+            #{b => 1, c => 1, a => 1}
         )
     ).
 

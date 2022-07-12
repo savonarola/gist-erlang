@@ -1,1 +1,4 @@
-[].
+[{<<"eflame">>,
+  {git,"https://github.com/proger/eflame",
+       {ref,"34d0c19dee808d614d75d91c143386d5120efb4b"}},
+  0}].

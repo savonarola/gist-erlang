@@ -3,7 +3,8 @@
 -type key() :: term().
 
 -callback consistent(key(), key()) -> boolean().
--callback union([key()]) -> key().
+-callback union(key(), key()) -> key().
+-callback null_key() -> key().
 -callback compress(key()) -> term().
 -callback decompress(term()) -> key().
 -callback penalty(key(), key()) -> number().
