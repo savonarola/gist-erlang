@@ -45,21 +45,21 @@ test_timings() ->
     Tree0 = gist_tree:new(gist_key_set, MinMaxFanouts),
 
     Words = word_list(100000),
+    KeyWords = [{gist_trigram:to_key(Word), Word} || Word <- Words],
     N = length(Words),
 
     {Time0, Tree1} =
         timer:tc(fun() ->
             lists:foldl(
-                fun(Word, Tree) ->
-                    Key = gist_trigram:to_key(Word),
+                fun({Key, Word}, Tree) ->
                     gist_tree:insert(Tree, Key, Word)
                 end,
                 Tree0,
-                Words
+                KeyWords
             )
         end),
 
-    io:format("~s~n", [gist_tree:display(Tree1)]),
+    % io:format("~s~n", [gist_tree:display(Tree1)]),
 
     io:format("Insert/Key: ~pms~n", [Time0 / N / 1_000]),
     true = erlang:garbage_collect(),
@@ -76,6 +76,8 @@ test_timings() ->
     SampleKeys = lists:flatmap(fun(Word) -> sample_key(Word, 3) end, Words),
     io:format("Sample key count: ~p~n", [length(SampleKeys)]),
 
+    true = erlang:garbage_collect(),
+
     {Time1, _} =
         timer:tc(fun() ->
             search(Tree1, SampleKeys)
@@ -85,6 +87,8 @@ test_timings() ->
 
     RandomSampleKeys = random_sample_keys(3, N),
     io:format("Random sample key count: ~p~n", [N]),
+
+    true = erlang:garbage_collect(),
 
     {Time2, _} =
         timer:tc(fun() ->
