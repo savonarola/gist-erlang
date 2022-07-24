@@ -19,8 +19,9 @@ Trigram search is implemented as a straightforwad demonstration of the `set` key
    Words = binary:split(Data, <<"\n">>, [global, trim_all]),
    length(Words).
 10000
-2> Tree0 = gist_tree:new(gist_key_set).
-{tree,0,5,20,undefined,gist_key_set}
+2> Tree0 = gist_tree:new(gist_key_set, gist_node_heap, undefined).
+{tree,2,20,gist_key_set,gist_node_heap,
+      #{level => 0,root => undefined}}
 3> Tree1 = lists:foldl(
         fun(Word, Tree) ->
             Key = gist_trigram:to_key(Word),
@@ -41,10 +42,11 @@ ok
 
 ## Performance
 
-On 2,3 GHz 8-Core Intel Core i9 (MacBook Pro 2019) and
-trigram tree for the 100000-word wordlist there are the
+On 2,3 GHz 8-Core Intel Core i9 (MacBook Pro 2019) there are the
 following latencies (`gist_sample:timings/0`):
 
+* trigram tree for the 100000-word wordlist (`gist_key_set` key scheme)
+* `gist_node_heap` node storage
 * Average key insert latency: **1.044ms**
 * Tree depth (min fanout = 2, max fanout = 4): **10**
 * Positive search latency: **0.332ms**

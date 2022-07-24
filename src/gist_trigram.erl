@@ -1,8 +1,6 @@
 -module(gist_trigram).
 
--export([
-    to_key/1
-]).
+-export([to_key/1]).
 
 -spec to_key(binary()) -> gist_key_set:key().
 to_key(Str) when is_binary(Str) ->

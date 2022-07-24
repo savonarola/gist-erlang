@@ -5,8 +5,8 @@
 % -compile(inline_list_funcs).
 
 -export([
-    compress/1,
-    decompress/1,
+    compress_keys/1,
+    decompress_keys/1,
     consistent/2,
     union/2,
     null_key/0,
@@ -14,10 +14,7 @@
     pick_split/2,
     display/1
 ]).
-
--export([
-    to_key/1
-]).
+-export([to_key/1]).
 
 -export_type([key/0]).
 
@@ -29,27 +26,23 @@
 %% gist_key behaviour
 %%----------------------------------------------------------------------------------------------------------------
 
--spec compress(key()) -> term().
-compress(Key) -> Key.
+-spec compress_keys([{key(), term()}]) -> [{term(), term()}].
+compress_keys(KV) -> KV.
 
--spec decompress(term()) -> key().
-decompress(Key) -> Key.
+-spec decompress_keys([{term(), term()}]) -> [{key(), term()}].
+decompress_keys(KV) -> KV.
 
 -spec consistent(key(), key()) -> boolean().
 consistent(Key, QueryKey) ->
-    lists:all(
-        fun(QKK) ->
-            maps:is_key(QKK, Key)
-        end,
-        maps:keys(QueryKey)
-    ).
+    maps:merge(Key, QueryKey) =:= Key.
 
 -spec union(key(), key()) -> key().
 union(Key1, Key2) ->
     maps:merge(Key1, Key2).
 
 -spec null_key() -> key().
-null_key() -> #{}.
+null_key() ->
+    #{}.
 
 -spec penalty(key(), key()) -> number().
 penalty(Key, KeyToAdd) ->
@@ -66,10 +59,10 @@ pick_split(Keys, Min) when length(Keys) >= Min * 2, Min > 0 ->
 display(Key) ->
     IO = string:join(
         lists:map(
-            fun(V) ->
-                io_lib:format("~p", [V])
-            end,
-            lists:sort(maps:keys(Key))
+            fun(V) -> io_lib:format("~p", [V]) end,
+            lists:sort(
+                maps:keys(Key)
+            )
         ),
         ","
     ),
@@ -105,7 +98,17 @@ penalty(Key, [KTAKey | Rest], Score) ->
 
 distribute_keys(_Union1, _Union2, Keys1, Keys2, _Cnt1, _Cnt2, [], _CntLeft, _CntMin) ->
     {Keys1, Keys2};
-distribute_keys(Union1, Union2, Keys1, Keys2, Cnt1, Cnt2, [Key | Rest] = Keys, CntLeft, CntMin) ->
+distribute_keys(
+    Union1,
+    Union2,
+    Keys1,
+    Keys2,
+    Cnt1,
+    Cnt2,
+    [Key | Rest] = Keys,
+    CntLeft,
+    CntMin
+) ->
     if
         Cnt1 + CntLeft == CntMin ->
             %% All go to Union1
@@ -167,9 +170,15 @@ are_better_seeds(Key1, Key2, undefined) ->
 are_better_seeds(Key1, Key2, Score) ->
     NewScore = score(Key1, Key2),
     case NewScore > Score of
-        true -> {true, NewScore};
-        false -> false
+        true ->
+            {true, NewScore};
+        false ->
+            false
     end.
 
 score(Key1, Key2) ->
-    maps:size(maps:merge(Key1, Key2)) - maps:size(Key1) - maps:size(Key2).
+    maps:size(
+        maps:merge(Key1, Key2)
+    ) -
+        maps:size(Key1) -
+        maps:size(Key2).
