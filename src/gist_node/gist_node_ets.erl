@@ -20,8 +20,8 @@
 -record(st, {leaf_tab = undefined :: ets:table(), node_tab = undefined :: ets:table()}).
 
 init(_) ->
-    LeafTab = ets:new(gist_node_ets_values, [bag]),
-    NodeTab = ets:new(gist_node_ets_nodes, [set]),
+    LeafTab = ets:new(gist_node_ets_values, [bag, protected]),
+    NodeTab = ets:new(gist_node_ets_nodes, [set, protected]),
     #st{leaf_tab = LeafTab, node_tab = NodeTab}.
 
 set_root(#st{node_tab = NodeTab} = Data, NewRoot, NewLevel) ->

@@ -33,7 +33,7 @@ test_search() ->
 
     true = erlang:garbage_collect(),
 
-    SampleKeys = lists:flatmap(fun(Word) -> sample_key(Word, 3) end, Words),
+    SampleKeys = lists:flatmap(fun(Word) -> sample_key(Tree1, Word, 3) end, Words),
 
     fprof:apply(?MODULE, search, [Tree1, SampleKeys]),
     fprof:profile(),
@@ -56,14 +56,15 @@ test_insert() ->
 test_timings() ->
     MinMaxFanouts = {2, 4},
     Tree0 = gist_tree:new(
-        gist_key_set,
+        gist_key_hash,
+        64,
         gist_node_heap,
         undefined,
         MinMaxFanouts
     ),
 
-    Words = word_list(10000),
-    KeyWords = [{gist_trigram:to_key(Word), Word} || Word <- Words],
+    Words = word_list(100000),
+    KeyWords = [{gist_tree:to_key(Tree0, gist_trigram:trigram_atoms(Word)), Word} || Word <- Words],
     N = length(Words),
 
     {Time0, Tree1} =
@@ -89,7 +90,7 @@ test_timings() ->
         [N, MinMaxFanouts, gist_tree:depth(Tree1)]
     ),
 
-    SampleKeys = lists:flatmap(fun(Word) -> sample_key(Word, 3) end, Words),
+    SampleKeys = lists:flatmap(fun(Word) -> sample_key(Tree0, Word, 3) end, Words),
     io:format("Sample key count: ~p~n", [length(SampleKeys)]),
 
     true = erlang:garbage_collect(),
@@ -98,7 +99,7 @@ test_timings() ->
 
     io:format("Search/Existing Key: ~pms~n", [Time1 / length(SampleKeys) / 1_000]),
 
-    RandomSampleKeys = random_sample_keys(3, N),
+    RandomSampleKeys = random_sample_keys(Tree1, 3, N),
     io:format("Random sample key count: ~p~n", [N]),
 
     true = erlang:garbage_collect(),
@@ -114,14 +115,15 @@ test_timings() ->
 test_timings_ets() ->
     MinMaxFanouts = {2, 4},
     Tree0 = gist_tree:new(
-        gist_key_set,
+        gist_key_hash,
+        48,
         gist_node_ets,
         undefined,
         MinMaxFanouts
     ),
 
     Words = lists:reverse(word_list(100000)),
-    KeyWords = [{gist_trigram:to_key(Word), Word} || Word <- Words],
+    KeyWords = [{gist_tree:to_key(Tree0, gist_trigram:trigram_atoms(Word)), Word} || Word <- Words],
     N = length(Words),
 
     {Time0, Tree1} =
@@ -151,7 +153,7 @@ test_timings_ets() ->
         [N, MinMaxFanouts, gist_tree:depth(Tree1)]
     ),
 
-    SampleKeys = lists:flatmap(fun(Word) -> sample_key(Word, 3) end, Words),
+    SampleKeys = lists:flatmap(fun(Word) -> sample_key(Tree0, Word, 3) end, Words),
     io:format("Sample key count: ~p~n", [length(SampleKeys)]),
 
     true = erlang:garbage_collect(),
@@ -160,7 +162,7 @@ test_timings_ets() ->
 
     io:format("Search/Existing Key: ~pms~n", [Time1 / length(SampleKeys) / 1_000]),
 
-    RandomSampleKeys = random_sample_keys(3, N),
+    RandomSampleKeys = random_sample_keys(Tree1, 3, N),
     io:format("Random sample key count: ~p~n", [N]),
 
     true = erlang:garbage_collect(),
@@ -181,27 +183,26 @@ insert(Tree, Words) ->
 
 search(_Tree, []) ->
     ok;
-search(Tree, [Key | Rest]) ->
+search(Tree, [{_, Key} | Rest]) ->
     _ = gist_tree:search(Tree, Key),
     search(Tree, Rest).
 
 search_existing(_Tree, []) ->
     ok;
-search_existing(Tree, [Key | Rest]) ->
-    [_ | _] = gist_tree:search(Tree, Key),
+search_existing(Tree, [{List, Key} | Rest]) ->
+    Res = gist_tree:search(Tree, Key),
+    % io:format("search_existing:~nList=~p~nKey=~p,~nRes=~p~n", [List, Key, Res]),
+    [_ | _] = Res,
     search_existing(Tree, Rest).
 
 %% take N trigrams from each word
-sample_key(Word, N) ->
-    Trigrams = gist_trigram:to_key(Word),
-    case maps:size(Trigrams) >= N of
+sample_key(Tree, Word, N) ->
+    Trigrams = gist_trigram:trigram_atoms(Word),
+    case length(Trigrams) >= N of
         true ->
+            SubTrigrams = lists:sublist(Trigrams, N),
             [
-                maps:from_list(
-                    lists:sublist(
-                        maps:to_list(Trigrams), N
-                    )
-                )
+                {SubTrigrams, gist_tree:to_key(Tree, SubTrigrams)}
             ];
         false ->
             []
@@ -215,11 +216,12 @@ word_file(N) ->
     NBin = integer_to_binary(N),
     filename:join([<<"test">>, <<"data">>, <<"words-", NBin/binary, ".txt">>]).
 
-random_sample_keys(N, Count) ->
-    [random_key(N) || _ <- lists:seq(1, Count)].
+random_sample_keys(Tree, N, Count) ->
+    [random_key(Tree, N) || _ <- lists:seq(1, Count)].
 
-random_key(N) when N >= 1 ->
-    gist_key_set:to_key([random_trigram() || _ <- lists:seq(1, N)]).
+random_key(Tree, N) when N >= 1 ->
+    Trigrams = [random_trigram() || _ <- lists:seq(1, N)],
+    {Trigrams, gist_tree:to_key(Tree, Trigrams)}.
 
 random_trigram() ->
     TrigramString = [$a + rand:uniform(26) - 1 || _ <- lists:seq(1, 3)],

@@ -45,7 +45,7 @@ ok
 On 2,3 GHz 8-Core Intel Core i9 (MacBook Pro 2019) there are the
 following latencies (`gist_sample:timings/0`):
 
-* trigram tree for the 100000-word wordlist (`gist_key_set` key scheme)
+* Trigram tree for the 100000-word wordlist (`gist_key_set` key scheme)
 * `gist_node_heap` node storage
 * Average key insert latency: **1.044ms**
 * Tree depth (min fanout = 2, max fanout = 4): **10**

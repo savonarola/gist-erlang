@@ -2,7 +2,9 @@
 
 % -compile(inline_list_funcs).
 
--export([new/3, new/4, destroy/1, insert/3, search/2, display/1, depth/1, node_data/1]).
+-export([new/4, new/5, destroy/1, insert/3, search/2, display/1, depth/1, node_data/1]).
+
+-export([to_key/2, null_key/1]).
 
 -export_type([gist_tree/0]).
 
@@ -12,8 +14,9 @@
     min = 2 :: pos_integer(),
     max = 20 :: pos_integer(),
     key_mod :: module(),
+    key_data = undefined :: term(),
     node_mod :: module(),
-    node_data = undefined
+    node_data = undefined :: term()
 }).
 
 -type gist_tree() :: #tree{}.
@@ -25,12 +28,12 @@
 %% API
 %%----------------------------------------------------------------------------------------------------------------
 
--spec new(module(), module(), term()) -> gist_tree().
-new(KeyMod, NodeMod, NodeModOpts) when is_atom(KeyMod), is_atom(NodeMod) ->
-    new(KeyMod, NodeMod, NodeModOpts, ?DEFAULT_MIN_MAX_FANOUT).
+-spec new(module(), term(), module(), term()) -> gist_tree().
+new(KeyMod, KeyModOpts, NodeMod, NodeModOpts) when is_atom(KeyMod), is_atom(NodeMod) ->
+    new(KeyMod, KeyModOpts, NodeMod, NodeModOpts, ?DEFAULT_MIN_MAX_FANOUT).
 
--spec new(module(), module(), term(), {pos_integer(), pos_integer()}) -> gist_tree().
-new(KeyMod, NodeMod, NodeModOpts, {Min, Max}) when
+-spec new(module(), term(), module(), term(), {pos_integer(), pos_integer()}) -> gist_tree().
+new(KeyMod, KeyModOpts, NodeMod, NodeModOpts, {Min, Max}) when
     is_atom(KeyMod),
     is_integer(Min),
     is_integer(Max),
@@ -41,6 +44,7 @@ new(KeyMod, NodeMod, NodeModOpts, {Min, Max}) when
     #tree{
         node_mod = NodeMod,
         node_data = NodeMod:init(NodeModOpts),
+        key_data = KeyMod:init(KeyModOpts),
         key_mod = KeyMod,
         min = Min,
         max = Max
@@ -71,6 +75,14 @@ display(Tree) ->
         {undefined, _} -> "[empty]\n";
         {RootPackedNode, Level} -> display_node(Tree, Level, Level, RootPackedNode)
     end.
+
+-spec to_key(gist_tree(), term()) -> gist_key:key().
+to_key(#tree{key_mod = KeyMod, key_data = KeyData}, Term) ->
+    KeyMod:to_key(KeyData, Term).
+
+-spec null_key(gist_tree()) -> gist_key:key().
+null_key(#tree{key_mod = KeyMod, key_data = KeyData}) ->
+    KeyMod:null_key(KeyData).
 
 %% For debug purposes only
 -spec node_data(gist_tree()) -> term().
@@ -118,10 +130,10 @@ start_insert(Tree, RootPackedNode, L, NewKey, Value) ->
             set_root(Tree, NewRootPackedNode, L);
         %% Need to build a new root
         {ok, NewKey1, NewNode1, NewKey2, NewNode2} ->
-            {ok, NewPackedNode1} = pack_into_node(Tree, RootPackedNode, NewNode1),
+            NewPackedNode1 = pack_node(Tree, NewNode1),
             NewPackedNode2 = pack_node(Tree, NewNode2),
             NewRootNode = [{NewKey1, NewPackedNode1}, {NewKey2, NewPackedNode2}],
-            NewRootPackedNode = pack_node(Tree, NewRootNode),
+            {ok, NewRootPackedNode} = pack_into_node(Tree, RootPackedNode, NewRootNode),
             set_root(Tree, NewRootPackedNode, L + 1)
     end.
 
@@ -134,6 +146,9 @@ insert(Tree, 0, PackedNode, NewKey, Value) ->
     case lists:keytake(NewKey, 1, Node) of
         %% The easiest case, the key exists, we just add value
         {value, {NewKey, LeafPackedNode}, RestChildren} ->
+            % io:format("Insert into existing~nKey=~p~nValue=~p~nValues=~p", [
+            %     NewKey, Value, get_values(Tree, LeafPackedNode)
+            % ]),
             {ok, NewLeafPackedNode} = add_value(Tree, LeafPackedNode, Value),
             NewNode = [{NewKey, NewLeafPackedNode} | RestChildren],
             {ok, NewNode};
@@ -219,7 +234,8 @@ unpack_node(
     #tree{
         node_data = NodeData,
         node_mod = NodeMod,
-        key_mod = KeyMod
+        key_mod = KeyMod,
+        key_data = KeyData
     },
     PackedNode
 ) ->
@@ -227,36 +243,38 @@ unpack_node(
         not_found ->
             not_found;
         {ok, Node} ->
-            {ok, KeyMod:decompress_keys(Node)}
+            {ok, KeyMod:decompress_keys(KeyData, Node)}
     end.
 
 pack_node(
     #tree{
         node_data = NodeData,
         node_mod = NodeMod,
-        key_mod = KeyMod
+        key_mod = KeyMod,
+        key_data = KeyData
     },
     Node
 ) ->
-    CompressedNode = KeyMod:compress_keys(Node),
+    CompressedNode = KeyMod:compress_keys(KeyData, Node),
     NodeMod:pack(NodeData, CompressedNode).
 
 pack_into_node(
     #tree{
         node_data = NodeData,
         node_mod = NodeMod,
-        key_mod = KeyMod
+        key_mod = KeyMod,
+        key_data = KeyData
     },
     PackedNode,
     Node
 ) ->
-    CompressedNode = KeyMod:compress_keys(Node),
+    CompressedNode = KeyMod:compress_keys(KeyData, Node),
     NodeMod:pack_into(NodeData, PackedNode, CompressedNode).
 
 pad(L, RootLevel) ->
     lists:duplicate(RootLevel - L, ?DISPLAY_PAD).
 
-search_node(#tree{key_mod = Mod} = Tree, 0, PackedNode, SearchedKey) ->
+search_node(#tree{key_mod = KeyMod, key_data = KeyData} = Tree, 0, PackedNode, SearchedKey) ->
     {ok, Node} = unpack_node(Tree, PackedNode),
     lists:concat([
         case get_values(Tree, LeafPackedNode) of
@@ -265,13 +283,15 @@ search_node(#tree{key_mod = Mod} = Tree, 0, PackedNode, SearchedKey) ->
             not_found ->
                 []
         end
-     || {Key, LeafPackedNode} <- Node, Mod:consistent(Key, SearchedKey)
+     || {Key, LeafPackedNode} <- Node, KeyMod:consistent(KeyData, Key, SearchedKey)
     ]);
-search_node(#tree{key_mod = Mod} = Tree, L, PackedNode, SearchedKey) when L > 0 ->
+search_node(#tree{key_mod = KeyMod, key_data = KeyData} = Tree, L, PackedNode, SearchedKey) when
+    L > 0
+->
     {ok, Node} = unpack_node(Tree, PackedNode),
     lists:concat([
         search_node(Tree, L - 1, ChildPackedNode, SearchedKey)
-     || {Key, ChildPackedNode} <- Node, Mod:consistent(Key, SearchedKey)
+     || {Key, ChildPackedNode} <- Node, KeyMod:consistent(KeyData, Key, SearchedKey)
     ]).
 
 -compile({inline, [add_value/3, get_values/2, create_leaf_node/2]}).
@@ -293,11 +313,13 @@ get_root(#tree{node_data = NodeData, node_mod = NodeMod}) ->
 set_root(#tree{node_data = NodeData, node_mod = NodeMod} = Tree, Root, Level) ->
     Tree#tree{node_data = NodeMod:set_root(NodeData, Root, Level)}.
 
-split(#tree{min = Min, key_mod = Mod} = Tree, ChildrenList) ->
+split(#tree{min = Min, key_mod = KeyMod, key_data = KeyData} = Tree, ChildrenList) ->
     Children = maps:from_list(ChildrenList),
     {Keys1, Keys2} =
-        Mod:pick_split(
-            maps:keys(Children), Min
+        KeyMod:pick_split(
+            KeyData,
+            maps:keys(Children),
+            Min
         ),
     Children1 =
         maps:to_list(
@@ -315,13 +337,13 @@ best_insert_key(Tree, Children, NewKey) ->
 best_insert_key(_Tree, [], _NewKey, BestKey, _) ->
     BestKey;
 best_insert_key(
-    #tree{key_mod = Mod} = Tree,
+    #tree{key_mod = KeyMod, key_data = KeyData} = Tree,
     [{Key, _} | Rest],
     NewKey,
     BestKey,
     BestPenalty
 ) ->
-    Penalty = Mod:penalty(Key, NewKey),
+    Penalty = KeyMod:penalty(KeyData, Key, NewKey),
     case Penalty < BestPenalty of
         true ->
             best_insert_key(Tree, Rest, NewKey, Key, Penalty);
@@ -329,17 +351,17 @@ best_insert_key(
             best_insert_key(Tree, Rest, NewKey, BestKey, BestPenalty)
     end.
 
-search_key(#tree{key_mod = Mod} = Tree, Children) ->
-    search_key(Tree, Children, Mod:null_key()).
+search_key(#tree{key_mod = KeyMod, key_data = KeyData} = Tree, Children) ->
+    search_key(Tree, Children, KeyMod:null_key(KeyData)).
 
 search_key(#tree{}, [], AccKey) ->
     AccKey;
-search_key(#tree{key_mod = Mod} = Tree, [{Key, _} | Rest], AccKey) ->
-    search_key(Tree, Rest, Mod:union(AccKey, Key)).
+search_key(#tree{key_mod = KeyMod, key_data = KeyData} = Tree, [{Key, _} | Rest], AccKey) ->
+    search_key(Tree, Rest, KeyMod:union(KeyData, AccKey, Key)).
 
-display_key(#tree{key_mod = Mod}, Key) ->
+display_key(#tree{key_mod = KeyMod, key_data = KeyData}, Key) ->
     try
-        Mod:display(Key)
+        KeyMod:display(KeyData, Key)
     catch
         error:undef ->
             io_lib:format("~p", [Key])
