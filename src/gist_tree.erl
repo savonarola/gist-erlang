@@ -1,8 +1,6 @@
 -module(gist_tree).
 
-% -compile(inline_list_funcs).
-
--export([new/4, new/5, destroy/1, insert/3, search/2, display/1, depth/1, node_data/1]).
+-export([new/4, new/5, destroy/1, insert/3, search/2, display/1, depth/1, node_data/1, node_count/1, node_count/2]).
 
 -export([to_key/2, null_key/1]).
 
@@ -87,6 +85,17 @@ null_key(#tree{key_mod = KeyMod, key_data = KeyData}) ->
 %% For debug purposes only
 -spec node_data(gist_tree()) -> term().
 node_data(#tree{node_data = NodeData}) -> NodeData.
+
+-spec node_count(gist_tree()) -> non_neg_integer().
+node_count(Tree) ->
+    {RootPackedNode, L} = get_root(Tree),
+    node_count(Tree, L, RootPackedNode).
+
+-spec node_count(gist_tree(), non_neg_integer()) -> non_neg_integer().
+node_count(Tree, L) ->
+    {RootPackedNode, RealL} = get_root(Tree),
+    true = L =< RealL,
+    node_count(Tree, RealL - L, RootPackedNode).
 
 %%----------------------------------------------------------------------------------------------------------------
 %% Internal helpers
@@ -371,3 +380,16 @@ display_key(#tree{key_mod = KeyMod, key_data = KeyData}, Key) ->
 
 node_keys(Node) ->
     lists:map(fun({Key, _}) -> Key end, Node).
+
+node_count(Tree, 0, PackedNode) ->
+    {ok, Node} = unpack_node(Tree, PackedNode),
+    length(Node);
+node_count(Tree, L, PackedNode) ->
+    {ok, Node} = unpack_node(Tree, PackedNode),
+    lists:foldl(
+        fun({_, ChildPackedNode}, Acc) ->
+            Acc + node_count(Tree, L - 1, ChildPackedNode)
+        end,
+        1,
+        Node
+    ).

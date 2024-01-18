@@ -32,7 +32,7 @@
 %%----------------------------------------------------------------------------------------------------------------
 
 -spec init(pos_integer()) -> data().
-init({NBits, NHashes}) when is_integer(NBits), NBits > 0 -> #st{bits = NBits * 8, n = NHashes}.
+init({NBytes, NHashes}) when is_integer(NBytes), NBytes > 0 -> #st{bits = NBytes * 8, n = NHashes}.
 
 -spec compress_keys(data(), [{key(), term()}]) -> [{term(), term()}].
 compress_keys(_St, KV) -> KV.

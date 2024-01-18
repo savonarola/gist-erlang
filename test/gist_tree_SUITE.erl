@@ -6,7 +6,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
 
--define(MIN_MAX_FANOUT, {2, 10}).
+-define(MIN_MAX_FANOUT, {3, 6}).
 
 all() ->
     [
@@ -63,10 +63,12 @@ t_insert_search(Tree0) ->
             )
         end),
 
+    Depth = gist_tree:depth(Tree1),
+
     ct:print("Insert/Key: ~pms", [Time0 / N / 1_000]),
     ct:print(
         "Tree depth for ~p keys(fanouts: ~p): ~p",
-        [N, ?MIN_MAX_FANOUT, gist_tree:depth(Tree1)]
+        [N, ?MIN_MAX_FANOUT, Depth]
     ),
 
     % SearchKey0 = gist_tree:to_key(Tree1, [<<"impressionally">>]),
@@ -86,6 +88,10 @@ t_insert_search(Tree0) ->
     % ?assertEqual([], gist_tree:search(Tree1, SearchKey1)),
 
     AllValues = gist_tree:search(Tree1, gist_tree:null_key(Tree1)),
+
+    NodeCount = gist_tree:node_count(Tree1, 1),
+    AvgFanout = math:exp(math:log(NodeCount) / (Depth)),
+    ct:print("Node count: ~p, avg fanout: ~p", [NodeCount, AvgFanout]),
 
     ct:print("All values length: ~p", [length(AllValues)]),
 
