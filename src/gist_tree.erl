@@ -181,6 +181,8 @@ insert(Tree, L, PackedNode, NewKey, Value) when L > 0 ->
         {ok, NewNodeKey, NewChildNode} ->
             {ok, NewChildPackedNode} = pack_into_node(Tree, BestPakedNode, NewChildNode),
             NewNode = [{NewNodeKey, NewChildPackedNode} | RestChildren],
+            % ct:print("New node keys[~p]: ~p", [L, node_keys(NewNode)]),
+            % length(NewNode) == length(lists:usort(node_keys(NewNode))) orelse ct:fail("Keys are not unique, new key: ~p, best key: ~p", [NewKey, BestKey]),
             %% search_key for ADJUST_KEYS
             {ok, search_key(Tree, NewNode), NewNode};
         %% value inserted and lead to a split
@@ -366,3 +368,6 @@ display_key(#tree{key_mod = KeyMod, key_data = KeyData}, Key) ->
         error:undef ->
             io_lib:format("~p", [Key])
     end.
+
+node_keys(Node) ->
+    lists:map(fun({Key, _}) -> Key end, Node).
